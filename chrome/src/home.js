@@ -202,15 +202,39 @@
     }
     //生成请求参数 发送给后台 进行 http请求
     function generateParameter(rpc_list) {
+
+        var limiter = new Bottleneck(1, 500);
+
+        function rpc_request(parameter, failed, cb) {
+            if (failed) {
+                console.log('retrying...');
+	            console.log(parameter);
+            }
+	        CORE.sendToBackground("rpc_data", parameter, function(success) {
+		        if (success) {
+			        CORE.showToast("下载成功!赶紧去看看吧~", "MODE_SUCCESS");
+			        if (failed) {
+				        console.log('retry success');
+			        }
+			        cb();
+                }
+		        else {
+			        CORE.showToast("下载失败!是不是没有开启aria2?", "MODE_FAILURE");
+			        console.log('rpc request failed');
+			        console.log(parameter);
+			        setTimeout(function() {
+				        console.log('start retrying...');
+			            rpc_request(parameter, true, cb)
+			        }, 2000);
+                }
+	        });
+        }
+
         var paths = CORE.parseAuth(RPC_PATH);
         for (var i = 0; i < rpc_list.length; i++) {
             var parameter = { url: paths[1], dataType: "json", type: "POST", data: JSON.stringify(rpc_list[i]), headers: { Authorization: paths[0] } };
-            CORE.sendToBackground("rpc_data", parameter, function(success) {
-                if (success)
-                    CORE.showToast("下载成功!赶紧去看看吧~", "MODE_SUCCESS");
-                else
-                    CORE.showToast("下载失败!是不是没有开启aria2?", "MODE_FAILURE");
-            });
+
+	        limiter.submit(rpc_request, parameter, false, null)
         }
     }
 
